@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Troll Button Game</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, sans-serif;
+      background: #06000a;
+      color: #1a1a1a;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #game {
+      min-height: 520px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem 1rem;
+      gap: 1.5rem;
+      text-align: center;
+      width: 100%;
+      max-width: 600px;
+    }
+
+    #stage-label {
+      font-size: 12px;
+      color: #888;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    #instruction {
+      font-size: 1.25rem;
+      font-weight: 500;
+      color: #7465c2;
+      max-width: 480px;
+      line-height: 1.5;
+      min-height: 3.5rem;
+    }
+
+    #sub {
+      font-size: 14px;
+      color: #314f6e;
+      max-width: 420px;
+      min-height: 1.5rem;
+    }
+
+    #progress-bar {
+      width: 300px;
+      height: 6px;
+      background: #e8e8e8;
+      border-radius: 99px;
+      overflow: hidden;
+      border: 0.5px solid #ddd;
+    }
+
+    #progress-fill {
+      height: 100%;
+      background: #7F77DD;
+      border-radius: 99px;
+      transition: width 0.4s ease;
+    }
+
+    #counter-display {
+      font-size: 2.5rem;
+      font-weight: 500;
+      color: #718844;
+      min-height: 3.5rem;
+      line-height: 1;
+    }
+
+    #btn-wrap {
+      position: relative;
+      width: 220px;
+      height: 80px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #troll-btn {
+      position: absolute;
+      padding: 14px 36px;
+      font-size: 16px;
+      font-weight: 500;
+      background: #fff;
+      color: #1a1a1a;
+      border: 1.5px solid #ccc;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: transform 0.08s, background 0.15s;
+      user-select: none;
+      white-space: nowrap;
+    }
+
+    #troll-btn:active { transform: scale(0.96); }
+    #troll-btn:hover { background: #f0f0f0; }
+    #troll-btn.danger { border-color: #E24B4A; color: #E24B4A; }
+    #troll-btn.success { border-color: #1D9E75; color: #1D9E75; }
+
+    #msg {
+      font-size: 13px;
+      color: #aaa;
+      min-height: 1.2rem;
+      font-style: italic;
+    }
+
+    #win-screen {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+      padding: 2rem;
+      text-align: center;
+    }
+
+    #win-screen h2 { font-size: 1.8rem; font-weight: 500; }
+    #win-screen p { color: #666; max-width: 380px; line-height: 1.6; }
+
+    #restart-btn {
+      margin-top: 0.5rem;
+      padding: 10px 28px;
+      font-size: 15px;
+      background: #fff;
+      border: 1.5px solid #ccc;
+      border-radius: 8px;
+      color: #1a1a1a;
+      cursor: pointer;
+    }
+
+    #restart-btn:hover { background: #f0f0f0; }
+  </style>
+</head>
+<body>
+
+<div id="game">
+  <div id="stage-label">challenge 1 of 10</div>
+  <div id="instruction">Click the button.</div>
+  <div id="sub"></div>
+  <div id="counter-display"></div>
+  <div id="progress-bar"><div id="progress-fill" style="width:0%"></div></div>
+  <div id="btn-wrap">
+    <button id="troll-btn">Click me</button>
+  </div>
+  <div id="msg"></div>
+</div>
+
+<div id="win-screen">
+  <div style="font-size:3rem">🎉</div>
+  <h2>You actually did it.</h2>
+  <p>Congratulations. You have the patience of a monk and the stubbornness of a mule. We're genuinely impressed — and a little scared.</p>
+  <button id="restart-btn">Play again</button>
+</div>
+
+<script>
+  const btn = document.getElementById('troll-btn');
+  const instruction = document.getElementById('instruction');
+  const sub = document.getElementById('sub');
+  const counterDisplay = document.getElementById('counter-display');
+  const stageLabel = document.getElementById('stage-label');
+  const msg = document.getElementById('msg');
+  const progressFill = document.getElementById('progress-fill');
+  const btnWrap = document.getElementById('btn-wrap');
+  const game = document.getElementById('game');
+  const winScreen = document.getElementById('win-screen');
+  const restartBtn = document.getElementById('restart-btn');
+
+  let stage = 0;
+  let clickCount = 0;
+  let escaped = false;
+  let dodgeMode = false;
+  let holdMode = false;
+  let holdProgress = 0;
+  let holdInterval = null;
+
+  const stages = [
+    {
+      type: 'click',
+      instruction: 'Click the button.',
+      sub: '',
+      target: 1,
+      label: 'Click me',
+    },
+    {
+      type: 'click',
+      instruction: 'Click the button 3 times.',
+      sub: '',
+      target: 3,
+      label: 'Click me',
+      showCounter: true,
+    },
+    {
+      type: 'noclick',
+      instruction: 'Do NOT click the button.',
+      sub: "Just... don't. Wait 4 seconds.",
+      target: 0,
+      label: "Don't click me",
+      troll: () => {
+        msg.textContent = "You couldn't resist, could you 😒 Starting over...";
+        setTimeout(() => resetStage(), 1200);
+      },
+      wait: 4000,
+    },
+    {
+      type: 'click',
+      instruction: 'Click the button 10 times.',
+      sub: '',
+      target: 10,
+      label: 'Click me',
+      showCounter: true,
+    },
+    {
+      type: 'dodge',
+      instruction: 'Click the button.',
+      sub: "Go ahead. It's right there.",
+      target: 1,
+      label: 'Click me',
+      dodges: 4,
+    },
+    {
+      type: 'hold',
+      instruction: 'Hold the button for 3 seconds.',
+      sub: "Don't let go.",
+      target: 1,
+      label: 'Hold me',
+      holdTime: 3000,
+    },
+    {
+      type: 'noclick',
+      instruction: 'Do NOT click the button this time either.',
+      sub: 'You have to wait 5 seconds. No cheating.',
+      target: 0,
+      label: 'I dare you',
+      troll: () => {
+        msg.textContent = 'YOU DID IT AGAIN 💀 Back to start...';
+        setTimeout(() => resetStage(), 1200);
+      },
+      wait: 5000,
+    },
+    {
+      type: 'click',
+      instruction: 'Click the button 20 times.',
+      sub: 'We believe in you.',
+      target: 20,
+      label: 'Again...',
+      showCounter: true,
+    },
+    {
+      type: 'dodge',
+      instruction: 'Okay SERIOUSLY click the button.',
+      sub: "We promise it won't move this time.",
+      target: 1,
+      label: 'Click me (really)',
+      dodges: 6,
+      speed: 'fast',
+    },
+    {
+      type: 'hold',
+      instruction: 'Hold for 5 seconds to win.',
+      sub: 'This is it. The final challenge.',
+      target: 1,
+      label: 'HOLD ME',
+      holdTime: 5000,
+      last: true,
+    },
+  ];
+
+  function resetStage() {
+    clickCount = 0;
+    escaped = false;
+    dodgeMode = false;
+    holdMode = false;
+    clearInterval(holdInterval);
+    loadStage(stage);
+  }
+
+  function loadStage(i) {
+    const s = stages[i];
+    stageLabel.textContent = `challenge ${i + 1} of ${stages.length}`;
+    instruction.textContent = s.instruction;
+    sub.textContent = s.sub || '';
+    msg.textContent = '';
+    btn.textContent = s.label;
+    btn.className = '';
+    btn.style.cssText = '';
+    btn.style.position = 'absolute';
+    btnWrap.style.width = '220px';
+    btnWrap.style.height = '80px';
+    counterDisplay.textContent = s.showCounter ? `0 / ${s.target}` : '';
+    progressFill.style.width = (i / stages.length * 100) + '%';
+
+    clickCount = 0;
+    escaped = false;
+    dodgeMode = false;
+    holdMode = false;
+    clearInterval(holdInterval);
+    holdProgress = 0;
+
+    if (s.type === 'noclick') {
+      btn.className = 'danger';
+      let remaining = s.wait / 1000;
+      sub.textContent = s.sub + ` (${remaining}s)`;
+      const tick = setInterval(() => {
+        remaining--;
+        if (remaining <= 0) {
+          clearInterval(tick);
+          if (!escaped) advanceStage();
+        } else {
+          sub.textContent = s.sub + ` (${remaining}s)`;
+        }
+      }, 1000);
+    }
+
+    if (s.type === 'dodge') {
+      dodgeMode = true;
+      escaped = 0;
+    }
+
+    if (s.type === 'hold') {
+      holdMode = true;
+    }
+  }
+
+  function advanceStage() {
+    stage++;
+    if (stage >= stages.length) {
+      showWin();
+      return;
+    }
+    msg.textContent = '✓ Nice! Next one...';
+    setTimeout(() => loadStage(stage), 700);
+  }
+
+  function showWin() {
+    game.style.display = 'none';
+    winScreen.style.display = 'flex';
+    progressFill.style.width = '100%';
+  }
+
+  function dodge() {
+    const s = stages[stage];
+    const maxDodges = s.dodges || 4;
+    escaped++;
+    msg.textContent =
+      escaped === 1 ? 'Hm, weird.' :
+      escaped === 2 ? "It keeps moving..." :
+      escaped === 3 ? 'ARE YOU KIDDING ME' : '😭';
+    if (escaped >= maxDodges) {
+      dodgeMode = false;
+      btn.style.position = 'absolute';
+      btn.style.left = '';
+      btn.style.top = '';
+      btn.style.transform = '';
+      msg.textContent = 'Ok fine, you can click it now.';
+      return;
+    }
+    const maxX = btnWrap.offsetWidth - btn.offsetWidth;
+    const maxY = btnWrap.offsetHeight - btn.offsetHeight;
+    const x = Math.floor(Math.random() * maxX);
+    const y = Math.floor(Math.random() * maxY);
+    btn.style.left = x + 'px';
+    btn.style.top = y + 'px';
+    btn.style.transform = 'none';
+  }
+
+  function startHold() {
+    if (!holdMode) return;
+    const s = stages[stage];
+    holdProgress = 0;
+    const totalTime = s.holdTime || 3000;
+    const steps = 40;
+    const stepTime = totalTime / steps;
+    msg.textContent = 'Holding...';
+    btn.className = 'success';
+    holdInterval = setInterval(() => {
+      holdProgress++;
+      const pct = (holdProgress / steps) * 100;
+      btn.style.background = `linear-gradient(to right, #1D9E75 ${pct}%, #f0f0f0 ${pct}%)`;
+      btn.style.color = pct > 40 ? '#fff' : '#1a1a1a';
+      if (holdProgress >= steps) {
+        clearInterval(holdInterval);
+        holdMode = false;
+        advanceStage();
+      }
+    }, stepTime);
+  }
+
+  function stopHold() {
+    if (!holdMode) return;
+    clearInterval(holdInterval);
+    holdProgress = 0;
+    btn.style.background = '';
+    btn.style.color = '';
+    if (stages[stage] && stages[stage].type === 'hold') {
+      msg.textContent = 'You let go too early! Try again.';
+    }
+  }
+
+  function handlePress() {
+    const s = stages[stage];
+    if (!s) return;
+
+    if (s.type === 'noclick') {
+      escaped = true;
+      s.troll && s.troll();
+      return;
+    }
+
+    if (s.type === 'hold') {
+      startHold();
+      return;
+    }
+
+    if (s.type === 'dodge' && dodgeMode) {
+      dodge();
+      return;
+    }
+
+    clickCount++;
+
+    if (s.showCounter) {
+      counterDisplay.textContent = `${clickCount} / ${s.target}`;
+    }
+
+    if (clickCount >= s.target) {
+      advanceStage();
+    } else {
+      const remaining = s.target - clickCount;
+      msg.textContent =
+        remaining > 5 ? `Keep going... ${remaining} more` :
+        remaining === 1 ? 'One more!' : `${remaining} more!`;
+    }
+  }
+
+  btn.addEventListener('mousedown', handlePress);
+  btn.addEventListener('touchstart', (e) => { e.preventDefault(); handlePress(); });
+  btn.addEventListener('mouseup', stopHold);
+  btn.addEventListener('mouseleave', stopHold);
+  btn.addEventListener('touchend', stopHold);
+  btn.addEventListener('touchcancel', stopHold);
+
+  restartBtn.addEventListener('click', () => {
+    stage = 0;
+    winScreen.style.display = 'none';
+    game.style.display = 'flex';
+    progressFill.style.width = '0%';
+    loadStage(0);
+  });
+
+  loadStage(0);
+</script>
+
+</body>
+</html>
